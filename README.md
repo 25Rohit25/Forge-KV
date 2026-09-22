@@ -3,7 +3,7 @@
 > **Distributed Key-Value Store & Durable Job Queue**  
 > Built from scratch in Java 17 | gRPC & Protocol Buffers | RocksDB | Custom Raft Consensus | Docker Compose | Prometheus
 
-[![CI](https://github.com/forgekv/forgekv/actions/workflows/ci.yml/badge.svg)](https://github.com/forgekv/forgekv/actions/workflows/ci.yml)
+[![CI](https://github.com/25Rohit25/Forge-KV/actions/workflows/ci.yml/badge.svg)](https://github.com/25Rohit25/Forge-KV/actions/workflows/ci.yml)
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -147,15 +147,17 @@ service QueueService {
 ---
 
 ## 9. Running a 3-Node Cluster
-
+ 
 ### Using Docker Compose
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 This boots up:
 - `node1`: gRPC on port `7001`, metrics on `8001`
 - `node2`: gRPC on port `7002`, metrics on `8002`
 - `node3`: gRPC on port `7003`, metrics on `8003`
+- `prometheus`: Scrapes metrics from all 3 nodes on `http://localhost:9090`
+- `grafana`: Pre-provisioned dashboards on `http://localhost:3000` (Login: `admin` / `admin`)
 
 Each node uses an independent persistent Docker volume (`node1_data`, `node2_data`, `node3_data`).
 
@@ -163,12 +165,37 @@ Each node uses an independent persistent Docker volume (`node1_data`, `node2_dat
 
 ## 10. Demo Commands
 
+### Automated 8-Step Interactive Live Demo
+Run the complete, standalone 8-step live demonstration that boots an in-process cluster, demonstrates strong writes/reads, leases a task, kills the leader, witnesses election of a new leader, reclaims expired leases, and snapshots metrics:
+
+```bash
+# Windows
+.\demo.bat
+
+# Linux / macOS
+./demo.sh
+```
+*(Or invoke via the shaded JAR: `java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI demo`)*
+
+### Interactive CLI Commands
+```bash
+# Key-Value Operations
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI put user:100 alice@example.com
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI get user:100
+
+# Queue Operations
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI enqueue emails welcome-user-100
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI claim emails worker-1 5000
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI ack <job-id> worker-1
+java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.client.ForgeKVCLI stats
+```
+
 ### Key-Value Operations via Java Client
 ```java
 Map<String, String> cluster = Map.of(
-    "node1", "localhost:7001",
-    "node2", "localhost:7002",
-    "node3", "localhost:7003"
+    "node1", "127.0.0.1:7001",
+    "node2", "127.0.0.1:7002",
+    "node3", "127.0.0.1:7003"
 );
 
 try (ForgeKVClient client = new ForgeKVClient(cluster)) {
@@ -204,11 +231,12 @@ Run the complete test suite:
 mvn test
 ```
 
-Test coverage includes:
+Test coverage includes (12 automated tests across 7 test classes):
 - `StorageEngineTest`: Acceptance test verifying PUT/GET/DELETE and persistence across directory restarts.
 - `StateMachineTest`: Deterministic state transitions, idempotency, and request deduplication.
 - `QueueStateMachineTest`: Full job lifecycle (Ready -> Processing -> Completed / Dead-letter).
 - `RaftLogTest`: Log persistence, prefix scanning, and conflict suffix truncation.
+- `SnapshotCompactionTest`: State machine snapshotting, prefix log compaction via `discardPrefix()`, and snapshot restore on restart.
 - `ClusterLeaderElectionTest`: 3-node in-process cluster, leader election, crash, and restart catch-up.
 - `ClusterReplicationAndFailoverTest`: Quorum replication, leader failover, and data preservation.
 - `ClusterQueueLeaseTest`: Worker abandonment, leader lease expiry scanner, and redelivery to another worker.
@@ -255,10 +283,10 @@ java -cp target/forgekv-1.0.0-SNAPSHOT.jar com.forgekv.benchmark.BenchmarkRunner
 ---
 
 ## 15. Future Work
-
+ 
+- [x] Snapshotting and log compaction (`InstallSnapshot` RPC) *(Implemented)*
 - [ ] Dynamic cluster membership changes (Raft joint consensus).
 - [ ] Multi-Raft group range sharding for horizontal write scaling.
-- [ ] Snapshotting and log compaction (`InstallSnapshot` RPC).
 - [ ] Stale follower reads option (`STALE` / `EVENTUAL`).
 
 ---
