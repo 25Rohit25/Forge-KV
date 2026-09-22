@@ -120,14 +120,25 @@
                     <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
                     <pluginId>grpc-java</pluginId>
                     <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
-                    <includeDependenciesInProtoc>false</includeDependenciesInProtoc>
                 </configuration>
                 <executions>
                     <execution>
+                        <id>compile-protoc</id>
                         <goals>
                             <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <temporaryProtoFileDirectory>${java.io.tmpdir}/forgekv-protoc-deps-main</temporaryProtoFileDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>compile-grpc</id>
+                        <goals>
                             <goal>compile-custom</goal>
                         </goals>
+                        <configuration>
+                            <temporaryProtoFileDirectory>${java.io.tmpdir}/forgekv-protoc-deps-grpc</temporaryProtoFileDirectory>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -151,6 +162,7 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.forgekv.server.ForgeKVServer</mainClass>
                                 </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                             <filters>
                                 <filter>

@@ -41,4 +41,16 @@ public class RaftServiceImpl extends RaftServiceGrpc.RaftServiceImplBase {
             }
         });
     }
+
+    @Override
+    public void installSnapshot(com.forgekv.raft.proto.InstallSnapshotArgs request, StreamObserver<com.forgekv.raft.proto.InstallSnapshotReply> responseObserver) {
+        raftNode.handleInstallSnapshot(request).whenComplete((reply, ex) -> {
+            if (ex != null) {
+                responseObserver.onError(ex);
+            } else {
+                responseObserver.onNext(reply);
+                responseObserver.onCompleted();
+            }
+        });
+    }
 }

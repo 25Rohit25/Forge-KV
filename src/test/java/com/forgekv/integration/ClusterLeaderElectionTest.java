@@ -32,9 +32,9 @@ public class ClusterLeaderElectionTest {
     @Test
     public void testLeaderElectionAndFailover(@TempDir File tempBase) throws Exception {
         Map<String, String> peers = Map.of(
-                "node1", "localhost:9101",
-                "node2", "localhost:9102",
-                "node3", "localhost:9103"
+                "node1", "127.0.0.1:9101",
+                "node2", "127.0.0.1:9102",
+                "node3", "127.0.0.1:9103"
         );
 
         // Start 3 nodes with fast election timeouts for testing (200-400ms)

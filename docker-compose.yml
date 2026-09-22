@@ -52,6 +52,26 @@ services:
     networks:
       - forgekv_net
 
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: forgekv_prometheus
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - forgekv_net
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: forgekv_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - forgekv_net
+
 volumes:
   node1_data:
   node2_data:

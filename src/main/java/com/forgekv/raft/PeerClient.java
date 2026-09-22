@@ -33,7 +33,17 @@ public class PeerClient implements Closeable {
     public PeerClient(String peerId, String target) {
         this.peerId = peerId;
         this.target = target;
-        this.channel = ManagedChannelBuilder.forTarget(target)
+        String host = "127.0.0.1";
+        int port = 7001;
+        if (target.contains(":")) {
+            String[] parts = target.split(":");
+            host = parts[0];
+            port = Integer.parseInt(parts[1]);
+        }
+        if ("localhost".equalsIgnoreCase(host)) {
+            host = "127.0.0.1";
+        }
+        this.channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext()
                 .build();
         this.stub = RaftServiceGrpc.newFutureStub(channel);
@@ -69,6 +79,28 @@ public class PeerClient implements Closeable {
             Futures.addCallback(lf, new FutureCallback<>() {
                 @Override
                 public void onSuccess(AppendEntriesReply result) {
+                    future.complete(result);
+                }
+
+                @Override
+                public void onFailure(Throwable t) {
+                    future.completeExceptionally(t);
+                }
+            }, MoreExecutors.directExecutor());
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    public CompletableFuture<com.forgekv.raft.proto.InstallSnapshotReply> installSnapshot(com.forgekv.raft.proto.InstallSnapshotArgs args, long timeoutMs) {
+        CompletableFuture<com.forgekv.raft.proto.InstallSnapshotReply> future = new CompletableFuture<>();
+        try {
+            ListenableFuture<com.forgekv.raft.proto.InstallSnapshotReply> lf = stub.withDeadlineAfter(timeoutMs, TimeUnit.MILLISECONDS)
+                    .installSnapshot(args);
+            Futures.addCallback(lf, new FutureCallback<>() {
+                @Override
+                public void onSuccess(com.forgekv.raft.proto.InstallSnapshotReply result) {
                     future.complete(result);
                 }
 

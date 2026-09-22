@@ -34,9 +34,9 @@ public class ClusterQueueLeaseTest {
     @Test
     public void testQueueLeaseExpiryAndRedelivery(@TempDir File tempBase) throws Exception {
         Map<String, String> peers = Map.of(
-                "node1", "localhost:9301",
-                "node2", "localhost:9302",
-                "node3", "localhost:9303"
+                "node1", "127.0.0.1:9301",
+                "node2", "127.0.0.1:9302",
+                "node3", "127.0.0.1:9303"
         );
 
         startNode("node1", 9301, 10301, new File(tempBase, "node1"), peers);

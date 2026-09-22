@@ -8,6 +8,7 @@ option java_package = "com.forgekv.raft.proto";
 service RaftService {
   rpc RequestVote(RequestVoteArgs) returns (RequestVoteReply);
   rpc AppendEntries(AppendEntriesArgs) returns (AppendEntriesReply);
+  rpc InstallSnapshot(InstallSnapshotArgs) returns (InstallSnapshotReply);
 }
 
 message LogEntry {
@@ -42,3 +43,17 @@ message AppendEntriesReply {
   bool success = 2;
   int64 match_index = 3;
 }
+
+message InstallSnapshotArgs {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 last_included_index = 3;
+  int64 last_included_term = 4;
+  bytes data = 5;
+}
+
+message InstallSnapshotReply {
+  int64 term = 1;
+  bool success = 2;
+}
+

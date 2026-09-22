@@ -34,9 +34,9 @@ public class ClusterReplicationAndFailoverTest {
     @Test
     public void testReplicationAndLeaderFailoverPreservesData(@TempDir File tempBase) throws Exception {
         Map<String, String> peers = Map.of(
-                "node1", "localhost:9201",
-                "node2", "localhost:9202",
-                "node3", "localhost:9203"
+                "node1", "127.0.0.1:9201",
+                "node2", "127.0.0.1:9202",
+                "node3", "127.0.0.1:9203"
         );
 
         startNode("node1", 9201, 10201, new File(tempBase, "node1"), peers);

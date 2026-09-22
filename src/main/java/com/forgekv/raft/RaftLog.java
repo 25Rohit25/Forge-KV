@@ -108,9 +108,38 @@ public class RaftLog {
         return Optional.ofNullable(entries.get(index));
     }
 
+    private volatile long snapshotLastIncludedIndex = 0;
+    private volatile long snapshotLastIncludedTerm = 0;
+
+    public synchronized void discardPrefix(long upToIncludedIndex, long lastIncludedTerm) {
+        log.info("Compacting Raft log: discarding entries up to index {}", upToIncludedIndex);
+        this.snapshotLastIncludedIndex = upToIncludedIndex;
+        this.snapshotLastIncludedTerm = lastIncludedTerm;
+
+        NavigableMap<Long, LogEntry> toRemove = entries.headMap(upToIncludedIndex, true);
+        List<Long> keysToRemove = new ArrayList<>(toRemove.keySet());
+
+        for (Long idx : keysToRemove) {
+            byte[] key = makeKey(idx);
+            storage.delete(key);
+            entries.remove(idx);
+        }
+    }
+
+    public long getSnapshotLastIncludedIndex() {
+        return snapshotLastIncludedIndex;
+    }
+
+    public long getSnapshotLastIncludedTerm() {
+        return snapshotLastIncludedTerm;
+    }
+
     public long getTerm(long index) {
         if (index == 0) {
             return 0;
+        }
+        if (index == snapshotLastIncludedIndex) {
+            return snapshotLastIncludedTerm;
         }
         LogEntry entry = entries.get(index);
         return entry != null ? entry.getTerm() : 0;

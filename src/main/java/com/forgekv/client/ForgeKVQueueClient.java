@@ -69,7 +69,17 @@ public class ForgeKVQueueClient implements Closeable {
             if (target == null) {
                 target = nodeAddresses.values().iterator().next();
             }
-            ManagedChannel ch = ManagedChannelBuilder.forTarget(target)
+            String host = "127.0.0.1";
+            int port = 7001;
+            if (target.contains(":")) {
+                String[] parts = target.split(":");
+                host = parts[0];
+                port = Integer.parseInt(parts[1]);
+            }
+            if ("localhost".equalsIgnoreCase(host)) {
+                host = "127.0.0.1";
+            }
+            ManagedChannel ch = ManagedChannelBuilder.forAddress(host, port)
                     .usePlaintext()
                     .build();
             channels.put(id, ch);

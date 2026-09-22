@@ -218,9 +218,9 @@ public class BenchmarkRunner {
 
     public static void main(String[] args) throws Exception {
         Map<String, String> nodes = Map.of(
-                "node1", "localhost:7001",
-                "node2", "localhost:7002",
-                "node3", "localhost:7003"
+                "node1", "127.0.0.1:7001",
+                "node2", "127.0.0.1:7002",
+                "node3", "127.0.0.1:7003"
         );
         System.out.println("Starting ForgeKV Benchmark against cluster...");
         printHeader();

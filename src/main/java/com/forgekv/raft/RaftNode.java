@@ -47,6 +47,7 @@ public class RaftNode implements Closeable {
 
     public static final String KEY_CURRENT_TERM = "meta/currentTerm";
     public static final String KEY_VOTED_FOR = "meta/votedFor";
+    public static final String KEY_SNAPSHOT = "meta/snapshot";
 
     private final String nodeId;
     private final StorageEngine storage;
@@ -127,6 +128,19 @@ public class RaftNode implements Closeable {
 
         Optional<byte[]> voteBytes = storage.get(KEY_VOTED_FOR.getBytes(StandardCharsets.UTF_8));
         voteBytes.ifPresent(bytes -> this.votedFor = new String(bytes, StandardCharsets.UTF_8));
+
+        Optional<byte[]> snapBytes = storage.get(KEY_SNAPSHOT.getBytes(StandardCharsets.UTF_8));
+        snapBytes.ifPresent(bytes -> {
+            try {
+                SnapshotMeta meta = SnapshotMeta.fromBytes(bytes);
+                raftLog.discardPrefix(meta.lastIncludedIndex(), meta.lastIncludedTerm());
+                this.commitIndex = meta.lastIncludedIndex();
+                this.lastApplied = meta.lastIncludedIndex();
+                log.info("Node {} loaded snapshot: index={}, term={}", nodeId, meta.lastIncludedIndex(), meta.lastIncludedTerm());
+            } catch (Exception ex) {
+                log.warn("Failed to load snapshot metadata", ex);
+            }
+        });
 
         log.info("Node {} initialized. Loaded persistent metadata: term={}, votedFor={}, logSize={}",
                 nodeId, currentTerm, votedFor, raftLog.size());
@@ -266,6 +280,32 @@ public class RaftNode implements Closeable {
 
         String peerId = peer.getPeerId();
         long prevIndex = nextIndex.getOrDefault(peerId, raftLog.getLastLogIndex() + 1) - 1;
+
+        if (prevIndex < raftLog.getSnapshotLastIncludedIndex()) {
+            // Follower is behind our compacted log prefix, send InstallSnapshot
+            com.forgekv.raft.proto.InstallSnapshotArgs snapArgs = com.forgekv.raft.proto.InstallSnapshotArgs.newBuilder()
+                    .setTerm(currentTerm)
+                    .setLeaderId(nodeId)
+                    .setLastIncludedIndex(raftLog.getSnapshotLastIncludedIndex())
+                    .setLastIncludedTerm(raftLog.getSnapshotLastIncludedTerm())
+                    .build();
+            long sentTerm = currentTerm;
+            peer.installSnapshot(snapArgs, heartbeatIntervalMs * 2).thenAcceptAsync(reply -> {
+                raftExecutor.execute(() -> {
+                    if (role != Role.LEADER || currentTerm != sentTerm) return;
+                    if (reply.getTerm() > currentTerm) {
+                        stepDown(reply.getTerm());
+                        return;
+                    }
+                    if (reply.getSuccess()) {
+                        nextIndex.put(peerId, raftLog.getSnapshotLastIncludedIndex() + 1);
+                        matchIndex.put(peerId, raftLog.getSnapshotLastIncludedIndex());
+                    }
+                });
+            }, raftExecutor).exceptionally(ex -> null);
+            return;
+        }
+
         long prevTerm = raftLog.getTerm(prevIndex);
 
         List<LogEntry> entriesToSend = raftLog.getEntriesFrom(prevIndex + 1, 100);
@@ -337,12 +377,20 @@ public class RaftNode implements Closeable {
             Optional<LogEntry> entryOpt = raftLog.getEntry(idx);
             if (entryOpt.isPresent()) {
                 LogEntry entry = entryOpt.get();
-                byte[] result = stateMachine.apply(entry.getCommand().toByteArray());
-                log.info("{\"event\":\"entry_committed\",\"index\":{},\"term\":{}}", idx, entry.getTerm());
+                try {
+                    byte[] result = stateMachine.apply(entry.getCommand().toByteArray());
+                    log.info("{\"event\":\"entry_committed\",\"index\":{},\"term\":{}}", idx, entry.getTerm());
 
-                CompletableFuture<byte[]> future = pendingFutures.remove(idx);
-                if (future != null) {
-                    future.complete(result);
+                    CompletableFuture<byte[]> future = pendingFutures.remove(idx);
+                    if (future != null) {
+                        future.complete(result);
+                    }
+                } catch (Exception ex) {
+                    log.error("Failed to apply entry at index {}", idx, ex);
+                    CompletableFuture<byte[]> future = pendingFutures.remove(idx);
+                    if (future != null) {
+                        future.completeExceptionally(ex);
+                    }
                 }
             }
         }
@@ -461,6 +509,64 @@ public class RaftNode implements Closeable {
                     .setSuccess(true)
                     .setMatchIndex(raftLog.getLastLogIndex())
                     .build());
+        });
+        return future;
+    }
+
+    public CompletableFuture<com.forgekv.raft.proto.InstallSnapshotReply> handleInstallSnapshot(com.forgekv.raft.proto.InstallSnapshotArgs req) {
+        CompletableFuture<com.forgekv.raft.proto.InstallSnapshotReply> future = new CompletableFuture<>();
+        raftExecutor.execute(() -> {
+            if (req.getTerm() > currentTerm) {
+                stepDown(req.getTerm());
+            }
+
+            if (req.getTerm() < currentTerm) {
+                future.complete(com.forgekv.raft.proto.InstallSnapshotReply.newBuilder()
+                        .setTerm(currentTerm)
+                        .setSuccess(false)
+                        .build());
+                return;
+            }
+
+            if (role != Role.FOLLOWER) {
+                role = Role.FOLLOWER;
+            }
+            leaderId = req.getLeaderId();
+            resetElectionDeadline();
+
+            long snapIndex = req.getLastIncludedIndex();
+            long snapTerm = req.getLastIncludedTerm();
+            SnapshotMeta meta = new SnapshotMeta(snapIndex, snapTerm, "sha256", System.currentTimeMillis());
+            storage.put(KEY_SNAPSHOT.getBytes(StandardCharsets.UTF_8), meta.toBytes());
+
+            raftLog.discardPrefix(snapIndex, snapTerm);
+            if (snapIndex > commitIndex) {
+                commitIndex = snapIndex;
+                lastApplied = snapIndex;
+            }
+
+            log.info("Node {} installed snapshot: index={}, term={}", nodeId, snapIndex, snapTerm);
+            future.complete(com.forgekv.raft.proto.InstallSnapshotReply.newBuilder()
+                    .setTerm(currentTerm)
+                    .setSuccess(true)
+                    .build());
+        });
+        return future;
+    }
+
+    public CompletableFuture<Boolean> takeSnapshot(long snapshotIndex) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        raftExecutor.execute(() -> {
+            if (snapshotIndex > commitIndex) {
+                future.complete(false);
+                return;
+            }
+            long term = raftLog.getTerm(snapshotIndex);
+            SnapshotMeta meta = new SnapshotMeta(snapshotIndex, term, "sha256", System.currentTimeMillis());
+            storage.put(KEY_SNAPSHOT.getBytes(StandardCharsets.UTF_8), meta.toBytes());
+            raftLog.discardPrefix(snapshotIndex, term);
+            log.info("Snapshot captured through index {}, compacted log prefix discarded", snapshotIndex);
+            future.complete(true);
         });
         return future;
     }

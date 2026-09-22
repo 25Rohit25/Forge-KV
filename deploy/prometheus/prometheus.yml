@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: 'forgekv_cluster'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['node1:8001', 'node2:8002', 'node3:8003']
+        labels:
+          cluster: 'forgekv-prod'
