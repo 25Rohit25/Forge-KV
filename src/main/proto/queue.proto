@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package com.forgekv.queue;
+
+option java_multiple_files = true;
+option java_package = "com.forgekv.queue.proto";
+
+enum JobStatus {
+  READY = 0;
+  PROCESSING = 1;
+  COMPLETED = 2;
+  DEAD = 3;
+}
+
+message Job {
+  string id = 1;
+  string queue = 2;
+  bytes payload = 3;
+  JobStatus status = 4;
+  int32 attempts = 5;
+  int32 max_attempts = 6;
+  int64 available_at_epoch_ms = 7;
+  int64 lease_until_epoch_ms = 8;
+  string worker_id = 9;
+  string idempotency_key = 10;
+  string last_error = 11;
+}
+
+service QueueService {
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+  rpc Claim(ClaimRequest) returns (ClaimResponse);
+  rpc Ack(AckRequest) returns (AckResponse);
+  rpc Nack(NackRequest) returns (NackResponse);
+  rpc ExtendLease(ExtendLeaseRequest) returns (ExtendLeaseResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+}
+
+message EnqueueRequest {
+  string queue = 1;
+  bytes payload = 2;
+  int32 max_attempts = 3;
+  int64 delay_ms = 4;
+  string idempotency_key = 5;
+  string request_id = 6;
+}
+
+message EnqueueResponse {
+  bool success = 1;
+  string job_id = 2;
+  string leader_id = 3;
+  string error_message = 4;
+}
+
+message ClaimRequest {
+  string queue = 1;
+  string worker_id = 2;
+  int64 lease_duration_ms = 3;
+  string request_id = 4;
+}
+
+message ClaimResponse {
+  bool found = 1;
+  Job job = 2;
+  string leader_id = 3;
+  string error_message = 4;
+}
+
+message AckRequest {
+  string job_id = 1;
+  string worker_id = 2;
+  string request_id = 3;
+}
+
+message AckResponse {
+  bool success = 1;
+  string leader_id = 2;
+  string error_message = 3;
+}
+
+message NackRequest {
+  string job_id = 1;
+  string worker_id = 2;
+  string error_message = 3;
+  string request_id = 4;
+}
+
+message NackResponse {
+  bool success = 1;
+  string leader_id = 2;
+  string error_message = 3;
+}
+
+message ExtendLeaseRequest {
+  string job_id = 1;
+  string worker_id = 2;
+  int64 additional_duration_ms = 3;
+  string request_id = 4;
+}
+
+message ExtendLeaseResponse {
+  bool success = 1;
+  int64 new_lease_until_epoch_ms = 2;
+  string leader_id = 3;
+  string error_message = 4;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+  string request_id = 2;
+}
+
+message GetJobResponse {
+  bool found = 1;
+  Job job = 2;
+  string leader_id = 3;
+  string error_message = 4;
+}
